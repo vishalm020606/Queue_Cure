@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: queue-cure-backend
+    runtime: node
+    repo: https://github.com/vishalm020606/Queue_Cure
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false # Link your MongoDB Atlas URL here on the Render dashboard
