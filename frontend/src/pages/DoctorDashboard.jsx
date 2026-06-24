@@ -730,18 +730,54 @@ export default function DoctorDashboard() {
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                       <input
                         type="text"
+                        list="common-medicines"
                         placeholder="Medicine (e.g. Paracetamol)"
                         value={medName}
                         onChange={(e) => setMedName(e.target.value)}
                         className="bg-slate-900 border border-slate-800 text-xs rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-blue-500"
                       />
+                      <datalist id="common-medicines">
+                        <option value="Paracetamol" />
+                        <option value="Amoxicillin" />
+                        <option value="Azithromycin" />
+                        <option value="Ibuprofen" />
+                        <option value="Cetirizine" />
+                        <option value="Pantoprazole" />
+                        <option value="Ranitidine" />
+                        <option value="Montelukast + Levocetirizine" />
+                        <option value="Metformin" />
+                        <option value="Amlodipine" />
+                        <option value="Atorvastatin" />
+                        <option value="Zincovit" />
+                        <option value="Limcee" />
+                        <option value="Domperidone" />
+                        <option value="Ofloxacin + Ornidazole" />
+                        <option value="Cough Syrup" />
+                      </datalist>
+
                       <input
                         type="text"
+                        list="common-dosages"
                         placeholder="Dosage (e.g. 500 mg)"
                         value={medDosage}
                         onChange={(e) => setMedDosage(e.target.value)}
                         className="bg-slate-900 border border-slate-800 text-xs rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-blue-500"
                       />
+                      <datalist id="common-dosages">
+                        <option value="500 mg" />
+                        <option value="650 mg" />
+                        <option value="250 mg" />
+                        <option value="100 mg" />
+                        <option value="50 mg" />
+                        <option value="10 mg" />
+                        <option value="5 mg" />
+                        <option value="1 Tab" />
+                        <option value="2 Tabs" />
+                        <option value="1 Capsule" />
+                        <option value="5 ml" />
+                        <option value="10 ml" />
+                      </datalist>
+
                       <select
                         value={medFrequency}
                         onChange={(e) => setMedFrequency(e.target.value)}
