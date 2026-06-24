@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
 import Patient from './models/Patient.js';
 import Visit from './models/Visit.js';

@@ -6,7 +6,8 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/queue_
 export const connectDB = async () => {
   try {
     await mongoose.connect(MONGODB_URI);
-    console.log('MongoDB successfully connected locally.');
+    const isLocal = MONGODB_URI.includes('127.0.0.1') || MONGODB_URI.includes('localhost');
+    console.log(`MongoDB successfully connected to ${isLocal ? 'local instance' : 'cloud (Atlas)'}.`);
 
     // Auto-migrate legacy visits to set tokenSeq
     try {
