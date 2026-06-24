@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import Navbar from '../components/Navbar';
@@ -15,7 +15,9 @@ import {
   Printer,
   X,
   Share2,
-  AlertTriangle
+  AlertTriangle,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 import { BACKEND_URL } from '../config';
@@ -27,6 +29,24 @@ import {
   synchronizePendingActions,
   initDB
 } from '../utils/indexedDB';
+
+const TRANSLATIONS = {
+  English: 'Token Number {token}, please proceed to Doctor Room 1.',
+  Tamil: 'டோக்கன் எண் {token}, மருத்துவர் அறை 1-க்கு செல்லவும்.',
+  Hindi: 'टोकन नंबर {token}, कृपया डॉक्टर कमरा 1 में जाएं।',
+  Telugu: 'టోకెన్ సంఖ్య {token}, దయచేసి డాక్టర్ గది 1 కి వెళ్ళండి.',
+  Kannada: 'ಟೋಕನ್ ಸಂಖ್ಯೆ {token}, ದಯವಿಟ್ಟು ವೈದ್ಯರ ಕೊಠಡಿ 1 ಕ್ಕೆ ಹೋಗಿ.',
+  Malayalam: 'ടോക്കൺ നമ്പർ {token}, ദയവായി ഡോക്ടർ റൂം 1 ലേക്ക് പോകുക.'
+};
+
+const VOICE_LANGS = {
+  English: 'en-IN',
+  Tamil: 'ta-IN',
+  Hindi: 'hi-IN',
+  Telugu: 'te-IN',
+  Kannada: 'kn-IN',
+  Malayalam: 'ml-IN'
+};
 
 export default function DoctorDashboard() {
   const navigate = useNavigate();
@@ -62,6 +82,68 @@ export default function DoctorDashboard() {
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+
+  // Voice announcement state
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const lastAnnouncedToken = useRef("");
+
+  const announceToken = (tokenNumber, preferredLanguage = 'English') => {
+    if (!tokenNumber || tokenNumber === "0" || tokenNumber === 0) return;
+    
+    // Stop prior speech immediately to prevent overlap issues
+    window.speechSynthesis.cancel();
+
+    // A small timeout ensures the cancel event finishes before starting a new utterance
+    setTimeout(() => {
+      // 1. Announce in English first
+      const enMessage = `Token number ${tokenNumber}, please proceed to Doctor Room 1.`;
+      const enUtterance = new SpeechSynthesisUtterance(enMessage);
+      
+      enUtterance.rate = 0.85; // slower speed for echo-prone lobby areas
+      enUtterance.pitch = 1.0; 
+
+      const voices = window.speechSynthesis.getVoices();
+      const enVoice = voices.find(v => v.lang.includes('en-IN') || v.lang.includes('en-GB') || v.lang.includes('en-US'));
+      if (enVoice) {
+        enUtterance.voice = enVoice;
+      }
+
+      // 2. Announce in regional language on completion
+      if (preferredLanguage && preferredLanguage !== 'English' && TRANSLATIONS[preferredLanguage]) {
+        enUtterance.onend = () => {
+          setTimeout(() => {
+            const langMessage = TRANSLATIONS[preferredLanguage].replace('{token}', tokenNumber);
+            const langUtterance = new SpeechSynthesisUtterance(langMessage);
+            langUtterance.rate = 0.8;
+            langUtterance.pitch = 1.0;
+
+            const langVoice = voices.find(v => v.lang.includes(VOICE_LANGS[preferredLanguage]));
+            if (langVoice) {
+              langUtterance.voice = langVoice;
+            } else {
+              // Fallback prefix match
+              const prefixVoice = voices.find(v => v.lang.startsWith(VOICE_LANGS[preferredLanguage].split('-')[0]));
+              if (prefixVoice) langUtterance.voice = prefixVoice;
+            }
+            window.speechSynthesis.speak(langUtterance);
+          }, 150);
+        };
+      }
+
+      window.speechSynthesis.speak(enUtterance);
+    }, 100);
+  };
+
+  const enableAudioAnnouncements = () => {
+    setVoiceEnabled(true);
+    
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+      const testUtterance = new SpeechSynthesisUtterance('Voice announcements enabled.');
+      testUtterance.rate = 1.0;
+      window.speechSynthesis.speak(testUtterance);
+    }, 50);
+  };
 
   const getToken = () => localStorage.getItem('token');
   const getUser = () => JSON.parse(localStorage.getItem('user') || '{}');
@@ -195,6 +277,17 @@ export default function DoctorDashboard() {
       setPatientHistory([]);
     }
   }, [queueState.visits]);
+
+  // Voice announcement hook on token updates
+  useEffect(() => {
+    const current = queueState.currentToken;
+    if (voiceEnabled && current && current !== "0" && current !== 0 && current !== lastAnnouncedToken.current) {
+      const servingVisit = queueState.visits.find(v => v.status === 'serving');
+      const lang = servingVisit?.patientId?.preferredLanguage || 'English';
+      announceToken(current, lang);
+      lastAnnouncedToken.current = current;
+    }
+  }, [queueState.currentToken, voiceEnabled, queueState.visits]);
 
   // Fetch patient medical record logs
   const fetchPatientHistory = async (patientId) => {
@@ -636,12 +729,37 @@ export default function DoctorDashboard() {
           <div className="lg:col-span-7 flex flex-col gap-6">
             
             {/* Sync bar */}
-            <div className="flex justify-between items-center text-xs">
-              <div className="flex items-center gap-2">
-                <div className={`w-3.5 h-3.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
-                <span className="text-slate-400 font-semibold">
-                  {isConnected ? '🟢 Server Connected' : '🔴 Server Offline - Saving Locally'}
-                </span>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className={`w-3.5 h-3.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
+                  <span className="text-slate-400 font-semibold">
+                    {isConnected ? '🟢 Server Connected' : '🔴 Server Offline - Saving Locally'}
+                  </span>
+                </div>
+                
+                {/* Audio Activation Button */}
+                <button
+                  type="button"
+                  onClick={voiceEnabled ? () => setVoiceEnabled(false) : enableAudioAnnouncements}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold transition shadow-sm border ${
+                    voiceEnabled
+                      ? 'bg-blue-900/50 text-blue-400 border-blue-500/30'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-850'
+                  }`}
+                >
+                  {voiceEnabled ? (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Audio Calls Enabled</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Activate Audio</span>
+                    </>
+                  )}
+                </button>
               </div>
               
               {pendingCount > 0 && (
@@ -670,7 +788,22 @@ export default function DoctorDashboard() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-850 text-xs">
                   <div>
                     <span className="text-slate-500 block uppercase font-semibold text-[10px]">Token</span>
-                    <span className="text-xl font-bold text-blue-400 font-mono">#{activeVisit.tokenNumber}</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-xl font-bold text-blue-400 font-mono">#{activeVisit.tokenNumber}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!voiceEnabled) {
+                            setVoiceEnabled(true);
+                          }
+                          announceToken(activeVisit.tokenNumber, activeVisit.patientId?.preferredLanguage || 'English');
+                        }}
+                        title="Call/Announce Patient"
+                        className="p-1 rounded bg-slate-800 hover:bg-slate-750 text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <span className="text-slate-500 block uppercase font-semibold text-[10px]">Patient Name</span>
