@@ -158,11 +158,13 @@ export default function PatientRoomView() {
   const upcomingQueue = waitingVisits.slice(0, 3);
   const nextWaitTime = upcomingQueue[0]?.predictedWaitTime || 0;
 
+  const hasActiveToken = queueState.currentToken && queueState.currentToken !== "0" && queueState.currentToken !== 0;
+
   const enableAudioAnnouncements = () => {
     setVoiceEnabled(true);
     
     // Play greeting only if no token is currently called
-    if (!queueState.currentToken || queueState.currentToken <= 0) {
+    if (!hasActiveToken) {
       window.speechSynthesis.cancel();
       setTimeout(() => {
         const testUtterance = new SpeechSynthesisUtterance('Voice announcements enabled.');
@@ -256,20 +258,20 @@ export default function PatientRoomView() {
             <div className="text-slate-500 text-xl font-bold uppercase tracking-wider mb-2">Now Serving</div>
             
             <div className={`relative px-12 py-10 lg:px-20 lg:py-16 rounded-[2.5rem] border-4 flex flex-col items-center justify-center transition-all ${
-              queueState.currentToken > 0 
+              hasActiveToken 
                 ? 'bg-emerald-950/20 border-emerald-500/40 shadow-[0_0_80px_-20px_rgba(16,185,129,0.25)]' 
                 : 'bg-slate-900/35 border-slate-850'
             }`}>
-              {queueState.currentToken > 0 && (
+              {hasActiveToken && (
                 <div className="absolute -top-3.5 bg-emerald-500 text-slate-950 font-black text-xs px-4 py-1.5 rounded-full tracking-widest animate-pulse-fast uppercase shadow-lg shadow-emerald-500/30">
                   Calling Now
                 </div>
               )}
               
               <span className={`text-9xl lg:text-[11rem] font-black tracking-tight font-mono leading-none ${
-                queueState.currentToken > 0 ? 'text-emerald-400 glow-green' : 'text-slate-700'
+                hasActiveToken ? 'text-emerald-400 glow-green' : 'text-slate-700'
               }`}>
-                {queueState.currentToken > 0 ? `#${queueState.currentToken}` : '--'}
+                {hasActiveToken ? `#${queueState.currentToken}` : '--'}
               </span>
             </div>
           </div>
@@ -296,7 +298,7 @@ export default function PatientRoomView() {
               <Volume2 className="w-5 h-5 text-blue-400" />
             </div>
             <div className="text-sm font-semibold text-slate-300">
-              {queueState.currentToken > 0 ? (
+              {hasActiveToken ? (
                 <span>Bilingual announcement triggered for <strong className="text-white">Token #{queueState.currentToken}</strong></span>
               ) : (
                 <span>Waiting for doctor to call the next token...</span>
