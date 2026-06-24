@@ -1,3 +1,4 @@
+// Vercel build trigger: 2026-06-24
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
