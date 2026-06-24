@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import Navbar from '../components/Navbar';
@@ -17,7 +17,9 @@ import {
   BookOpen,
   Calendar,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 import { BACKEND_URL } from '../config';
@@ -30,6 +32,24 @@ import {
   initDB
 } from '../utils/indexedDB';
 import TRANSLATIONS from '../utils/translations';
+
+const VOICE_TRANSLATIONS = {
+  English: 'Token Number {token}, please proceed to Doctor Room 1.',
+  Tamil: 'டோக்கன் எண் {token}, மருத்துவர் அறை 1-க்கு செல்லவும்.',
+  Hindi: 'टोकन नंबर {token}, कृपया डॉक्टर कमरा 1 में जाएं।',
+  Telugu: 'టోకెన్ సంఖ్య {token}, దయచేసి డాక్టర్ గది 1 కి వెళ్ళండి.',
+  Kannada: 'ಟೋಕನ್ ಸಂಖ್ಯೆ {token}, ದಯವಿಟ್ಟು ವೈದ್ಯರ ಕೊಠಡಿ 1 ಕ್ಕೆ ಹೋಗಿ.',
+  Malayalam: 'ടോക്കൺ നമ്പർ {token}, ദയവായി ഡോക്ടർ റൂം 1 ലേക്ക് പോകുക.'
+};
+
+const VOICE_LANGS = {
+  English: 'en-IN',
+  Tamil: 'ta-IN',
+  Hindi: 'hi-IN',
+  Telugu: 'te-IN',
+  Kannada: 'kn-IN',
+  Malayalam: 'ml-IN'
+};
 
 export default function ReceptionistDashboard() {
   const navigate = useNavigate();
@@ -76,6 +96,68 @@ export default function ReceptionistDashboard() {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [notificationLogs, setNotificationLogs] = useState([]);
+
+  // Voice announcement state
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const lastAnnouncedToken = useRef("");
+
+  const announceToken = (tokenNumber, preferredLanguage = 'English') => {
+    if (!tokenNumber || tokenNumber === "0" || tokenNumber === 0) return;
+    
+    // Stop prior speech immediately to prevent overlap issues
+    window.speechSynthesis.cancel();
+
+    // A small timeout ensures the cancel event finishes before starting a new utterance
+    setTimeout(() => {
+      // 1. Announce in English first
+      const enMessage = `Token number ${tokenNumber}, please proceed to Doctor Room 1.`;
+      const enUtterance = new SpeechSynthesisUtterance(enMessage);
+      
+      enUtterance.rate = 0.85; // slower speed for echo-prone lobby areas
+      enUtterance.pitch = 1.0; 
+
+      const voices = window.speechSynthesis.getVoices();
+      const enVoice = voices.find(v => v.lang.includes('en-IN') || v.lang.includes('en-GB') || v.lang.includes('en-US'));
+      if (enVoice) {
+        enUtterance.voice = enVoice;
+      }
+
+      // 2. Announce in regional language on completion
+      if (preferredLanguage && preferredLanguage !== 'English' && VOICE_TRANSLATIONS[preferredLanguage]) {
+        enUtterance.onend = () => {
+          setTimeout(() => {
+            const langMessage = VOICE_TRANSLATIONS[preferredLanguage].replace('{token}', tokenNumber);
+            const langUtterance = new SpeechSynthesisUtterance(langMessage);
+            langUtterance.rate = 0.8;
+            langUtterance.pitch = 1.0;
+
+            const langVoice = voices.find(v => v.lang.includes(VOICE_LANGS[preferredLanguage]));
+            if (langVoice) {
+              langUtterance.voice = langVoice;
+            } else {
+              // Fallback prefix match
+              const prefixVoice = voices.find(v => v.lang.startsWith(VOICE_LANGS[preferredLanguage].split('-')[0]));
+              if (prefixVoice) langUtterance.voice = prefixVoice;
+            }
+            window.speechSynthesis.speak(langUtterance);
+          }, 150);
+        };
+      }
+
+      window.speechSynthesis.speak(enUtterance);
+    }, 100);
+  };
+
+  const enableAudioAnnouncements = () => {
+    setVoiceEnabled(true);
+    
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+      const testUtterance = new SpeechSynthesisUtterance('Voice announcements enabled.');
+      testUtterance.rate = 1.0;
+      window.speechSynthesis.speak(testUtterance);
+    }, 50);
+  };
 
   const getToken = () => localStorage.getItem('token');
   const getUser = () => JSON.parse(localStorage.getItem('user') || '{}');
@@ -243,6 +325,17 @@ export default function ReceptionistDashboard() {
       newSocket.disconnect();
     };
   }, [navigate]);
+
+  // Voice announcement hook on token updates
+  useEffect(() => {
+    const current = queueState.currentToken;
+    if (voiceEnabled && current && current !== "0" && current !== 0 && current !== lastAnnouncedToken.current) {
+      const servingVisit = queueState.visits.find(v => v.status === 'serving');
+      const lang = servingVisit?.patientId?.preferredLanguage || 'English';
+      announceToken(current, lang);
+      lastAnnouncedToken.current = current;
+    }
+  }, [queueState.currentToken, voiceEnabled, queueState.visits]);
 
   // Phone lookup auto-complete with local search fallback
   useEffect(() => {
@@ -743,13 +836,36 @@ export default function ReceptionistDashboard() {
         </div>
 
         {/* Sync Indicator */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {pendingCount > 0 && (
             <span className="bg-amber-950 text-amber-400 border border-amber-500/20 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase animate-pulse">
               {pendingCount} offline actions pending
             </span>
           )}
           
+          {/* Audio Activation Button */}
+          <button
+            type="button"
+            onClick={voiceEnabled ? () => setVoiceEnabled(false) : enableAudioAnnouncements}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider transition shadow-sm border ${
+              voiceEnabled
+                ? 'bg-blue-900/50 text-blue-400 border-blue-500/30'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-850'
+            }`}
+          >
+            {voiceEnabled ? (
+              <>
+                <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+                <span>Audio Enabled</span>
+              </>
+            ) : (
+              <>
+                <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                <span>Activate Audio</span>
+              </>
+            )}
+          </button>
+
           <div className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -788,8 +904,25 @@ export default function ReceptionistDashboard() {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
                   <div>
                     <div className="text-slate-400 text-sm">Currently serving token</div>
-                    <div className="text-5xl font-black text-blue-500 glow-blue mt-1 font-mono">
-                      {servingVisit ? `#${servingVisit.tokenNumber}` : 'None'}
+                    <div className="flex items-center gap-3 mt-1">
+                      <div className="text-5xl font-black text-blue-500 glow-blue font-mono">
+                        {servingVisit ? `#${servingVisit.tokenNumber}` : 'None'}
+                      </div>
+                      {servingVisit && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!voiceEnabled) {
+                              setVoiceEnabled(true);
+                            }
+                            announceToken(servingVisit.tokenNumber, servingVisit.patientId?.preferredLanguage || 'English');
+                          }}
+                          title="Call/Announce Patient"
+                          className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-colors shadow-sm"
+                        >
+                          <Volume2 className="w-5 h-5" />
+                        </button>
+                      )}
                     </div>
                     {servingVisit && (
                       <p className="text-xs text-slate-300 mt-2">
